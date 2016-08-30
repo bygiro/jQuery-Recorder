@@ -9,7 +9,6 @@
     "url": "git://github.com/bygiro/jquery-recorder.git"
   },
   "main": [
-    "dist/jquery.recorder.js",
     "dist/jquery.recorder.min.js"
   ],
   "licenses": [
