@@ -195,12 +195,18 @@ if(!bg){
 		opts = that.settings,
 		data = that.getRecordedData(),
 		uploadStatusContainer = that.$uploadstatus,
-		flowjs;
+		flowjs,onFileProgress,onFileSuccess;
 		
-		if(!opts.flowOpts) return;
+		if(!data || ((!opts.flowOpts || typeof Flow == 'undefined') && typeof opts.uploader != 'function')) return;
+		
+		if(opts.uploader){
+			// custom uploader
+			opts.uploader(data);
+			return;
+		}
 		
 		// upload with flow.js
-		if(typeof Flow == 'undefined' || !data) return;
+		if(typeof Flow == 'undefined') return;
 		
 		
 		flowjs = new Flow(opts.flowOpts);
@@ -214,7 +220,12 @@ if(!bg){
 			.removeClass('progress-bar-success bar-success');		
 		uploadStatusContainer.show();
 		
-		flowjs.on('fileProgress', function(file){
+		that.$element.triggerHandler('upload_start.recorder');
+		
+		onFileProgress = function(file){
+			
+			that.$element.triggerHandler('upload_progress.recorder', file);
+			
             // Handle progress for both the file and the overall upload
 			var uploadInfo = opts.text.upload_speed + humanize(file.averageSpeed) + '/s '
                 + timeToString(file.timeRemaining()*1000) + opts.text.time_remaining;
@@ -222,9 +233,15 @@ if(!bg){
             uploadStatusContainer.find('.txt-info').show().html(uploadInfo);
 				
             uploadStatusContainer.find('.progress-bar').css({width:Math.floor(flowjs.progress()*100) + '%'});
-        });
+        };
+		if(typeof opts.onFileProgress == 'function'){
+			onFileProgress = opts.onFileProgress;
+		}
+		flowjs.on('fileProgress', onFileProgress);
 		
-		flowjs.on('fileSuccess',function(file, message, chunk){
+		onFileSuccess = function(file, message, chunk){
+			that.$element.triggerHandler('upload_completed.recorder', [file, message, chunk]);
+			
 			uploadStatusContainer.find('.progress, .progress-bar')
 				.removeClass('active progress-striped')
 				.addClass('progress-bar-success bar-success');
@@ -232,7 +249,11 @@ if(!bg){
 			uploadStatusContainer.find('.progress-bar').html(opts.text.completed);
 			
 			uploadStatusContainer.find('.txt-info').hide();
-		});
+        };
+		if(typeof opts.onFileSuccess == 'function'){
+			onFileSuccess = opts.onFileSuccess;
+		}
+		flowjs.on('fileSuccess', onFileSuccess);
 	},
 	
 	stopStream = function(){
@@ -249,6 +270,8 @@ if(!bg){
 			}
 			that.stream = null;
 		}
+		
+		that.$element.triggerHandler('stream_stop.recorder');
 		
 		if(that.$postviewEl.length){			
 			that.$previewEl.hide();
@@ -273,6 +296,8 @@ if(!bg){
 				
 		captureUserMedia(options, function(stream) {
 			that.stream = stream;
+			
+			that.$element.triggerHandler('stream_start.recorder');
 			
 			previewElement.srcObject = stream;
 			previewElement.muted = true;
@@ -324,11 +349,14 @@ if(!bg){
 			
 			that.onMediaCaptured();
 			
-			stream.onended = function() {
-				that.onMediaStopped();
-			};
-		}, function(error) {
-			that.onMediaCapturingFailed(error);
+			if(typeof opts.onMediaStopped == 'function'){
+				stream.onended = opts.onMediaStopped;
+			}
+			
+		}, function(error){
+			if(typeof opts.onMediaCapturingFailed == 'function'){
+				opts.onMediaCapturingFailed(error);
+			}
 		});
 	},
 	
@@ -508,14 +536,6 @@ if(!bg){
 			}			
 			
 			// common callbacks functions
-			that.onMediaCapturingFailed = function(error){		
-				console.log('media capturing error ');				
-			}
-			
-			that.onMediaStopped = function(){
-				console.log('media stopped');
-			}
-			
 			that.recordingEnded = function(url){
 				var	recordRTC = getRecordRtc.call(that),
 				attr = 'poster';
@@ -538,6 +558,9 @@ if(!bg){
 				};
 
 				that.recordedData = recordRTC.blob;
+				
+				that.$element.triggerHandler('recording_ended.recorder');
+				
 				stopStream.call(that);
 				
 				uploadData.call(that);
@@ -597,6 +620,7 @@ if(!bg){
                                     audioRecorder.startRecording();
                                     videoRecorder.startRecording();
 									
+									that.$element.triggerHandler('recording_started.recorder');
 									// timer
 									if(opts.showTimer){
 										toggleTimer.call(that);
@@ -629,6 +653,8 @@ if(!bg){
 							}
 							
 							that.recordRTCInstance.startRecording();
+							
+							that.$element.triggerHandler('recording_started.recorder');
 							
 							// timer
 							if(opts.showTimer){
@@ -669,6 +695,7 @@ if(!bg){
 						
                         that.recordRTCInstance.startRecording();
 						
+						that.$element.triggerHandler('recording_started.recorder');
 						// timer
 						if(opts.showTimer){
 							toggleTimer.call(that);
@@ -697,6 +724,8 @@ if(!bg){
 
 						that.recordedData = dataURItoBlob(that.recordedData);
 
+						that.$element.triggerHandler('recording_ended.recorder');
+						
 						stopStream.call(that);
 						uploadData.call(that);
 					};
@@ -710,7 +739,7 @@ if(!bg){
 		togglePause: function(){
 			var that = this, opts = that.settings,
 			controlPanel = that.$element.find('.msr-panel'),
-			resumeBtn,pauseBtn,isPaused = true,method = 'pauseRecording',btn = '.btn-resume';
+			resumeBtn,pauseBtn,isPaused = true,method = 'pause',btn = '.btn-resume';
 			
 			if(controlPanel.length){
 				controlPanel.find('.btn-stop').show();
@@ -724,17 +753,19 @@ if(!bg){
 			
 			if(that.isPaused){
 				// resume
-				method = 'resumeRecording';
+				method = 'resume';
 				isPaused = false;
 				btn = '.btn-pause';
 			}
 
 			for(var i=0;i<instances.length;i++){
 				var inst = instances[i];
-				if(!inst[method]) continue;
+				if(!inst[method +'Recording']) continue;
 				
-				inst[method]();
+				inst[method +'Recording']();
 			}
+			
+			that.$element.triggerHandler('recording_'+ method +'d.recorder');
 			
 			controlPanel.find(btn).show();
 			that.isPaused = isPaused;
