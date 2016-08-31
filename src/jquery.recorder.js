@@ -70,6 +70,9 @@ if(!bg){
 
 	var pluginName = 'recorder',
 
+	// source DetectRTC.js
+    isEdge = navigator.userAgent.indexOf('Edge') !== -1 && (!!navigator.msSaveOrOpenBlob || !!navigator.msSaveBlob),
+	
 	captureUserMedia = function(mediaConstraints, successCallback, errorCallback) {		
 		if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
 			navigator.mediaDevices.getUserMedia(mediaConstraints).then(successCallback).catch(errorCallback);
@@ -578,7 +581,7 @@ if(!bg){
                                 sampleRate: parseInt(opts.sampleRate),
                                 leftChannel: opts.leftChannel,
                                 disableLogs: opts.disableLogs,
-                                recorderType: DetectRTC.browser.isEdge ? StereoAudioRecorder : null
+                                recorderType: isEdge ? StereoAudioRecorder : null
                             };
 
                             if(typeof opts.sampleRate == 'undefined') {
@@ -680,7 +683,7 @@ if(!bg){
                             sampleRate: parseInt(opts.sampleRate),
                             leftChannel: opts.leftChannel,
                             disableLogs: opts.disableLogs,
-                            recorderType: DetectRTC.browser.isEdge ? StereoAudioRecorder : null
+                            recorderType: isEdge ? StereoAudioRecorder : null
                         });
 						
 						that.$previewEl.hide();
