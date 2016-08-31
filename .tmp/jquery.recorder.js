@@ -31,21 +31,7 @@ if(!bg){
 			}
 
 		}	
-		
-		bg.prototype.hide = function(){
-			for(var i=0;i<this.length;i++){
-				this[i].style.display = 'none';
-			}
-			return this;
-		}
-		
-		bg.prototype.show = function(){
-			for(var i=0;i<this.length;i++){
-				this[i].style.display = '';
-			}
-			return this;
-		}
-		
+				
 		bg.prototype.find = function (selector){			
 			var context = this[0];
 			// Early return if context is not an element or document
@@ -117,7 +103,7 @@ if(!bg){
 		
 		if(stop){
 			clearInterval(that.timerRunning);
-			that.$timer.hide();
+			that.$timer.css('display','none');
 			delete that.timerStartedAt;
 			delete that.timerStoppedAt;
 			return;
@@ -190,7 +176,7 @@ if(!bg){
 			.addClass('active')
 			.css('cursor','')
 			.removeClass('progress-bar-success bar-success progress-bar-danger bar-danger');		
-		uploadStatusContainer.show();
+		uploadStatusContainer.css('display','');
 		
 		that.$element.triggerHandler('upload_start.recorder');
 		
@@ -204,7 +190,7 @@ if(!bg){
 			var uploadInfo = opts.text.upload_speed + that._humanize(file.averageSpeed) + '/s '
                 + that._timeToString(file.timeRemaining()*1000) + opts.text.time_remaining;
 				
-            uploadStatusContainer.find('.txt-info').show().html(uploadInfo);
+            uploadStatusContainer.find('.txt-info').html(uploadInfo).css('display','');
 				
             uploadStatusContainer.find('.progress-bar').css({width:Math.floor(flowjs.progress()*100) + '%'});
         };
@@ -225,7 +211,7 @@ if(!bg){
 			
 			uploadStatusContainer.find('.progress-bar').html(opts.text.completed);
 			
-			uploadStatusContainer.find('.txt-info').hide();
+			uploadStatusContainer.find('.txt-info').css('display','none');
         };
 		if(typeof opts.onFileSuccess == 'function'){
 			onFileSuccess = opts.onFileSuccess;
@@ -249,7 +235,7 @@ if(!bg){
 					uploadData.call(that);
 				});
 			
-			uploadStatusContainer.find('.txt-info').hide();
+			uploadStatusContainer.find('.txt-info').css('display','none');
         };
 		if(typeof opts.onFileError == 'function'){
 			onFileError = opts.onFileError;
@@ -273,16 +259,16 @@ if(!bg){
 		}
 		
 		that.$element.triggerHandler('stream_stop.recorder');
-		
-		if(that.$postviewEl.length){			
-			that.$previewEl.hide();
-		} else {
-			that.$previewEl.show();
-		}
-		
+
 		if(that.visualizer){
 			clearInterval(that.visualizer);
-			that.$visualizer.hide();
+			that.$visualizer.css('display','none');
+		}
+		
+		if(that.$postviewEl.length){			
+			that.$previewEl.css('display','none');
+		} else {
+			that.$previewEl.css('display','');
 		}
 	},
 	
@@ -292,8 +278,8 @@ if(!bg){
 		previewElement = that.$previewEl[0],
 		type = opts.streamType;
 		
-		that.$previewEl.show();
-		if(that.$postviewEl.length) that.$postviewEl.hide();
+		that.$previewEl.css('display','');
+		if(that.$postviewEl.length) that.$postviewEl.css('display','none');
 				
 		captureUserMedia(options, function(stream) {
 			that.stream = stream;
@@ -306,7 +292,7 @@ if(!bg){
 			
 			if(type == 'audio' && that.$visualizer.length){
 				
-				that.$visualizer.show();
+				that.$visualizer.css('display','');
 				
 				window.AudioContext = window.AudioContext || window.webkitAudioContext;
 				
@@ -375,7 +361,7 @@ if(!bg){
 				break;
 				
 			case 'audio':
-				that.$visualizer = $('<canvas style="background-color: #ddd;" class="visualizer"></canvas>').hide();
+				that.$visualizer = $('<canvas style="background-color: #ddd;" class="visualizer"></canvas>').css('display','none');
 				$html.append(that.$visualizer);
 				that.$previewEl = $('<audio></audio>');
 				break;
@@ -386,12 +372,12 @@ if(!bg){
 				break;				
 		}		
 		
-		that.$previewEl.hide();
+		that.$previewEl.css('display','none');
 		
 		$html.append(that.$previewEl);
 		
 		if(that.$postviewEl.length){
-			that.$postviewEl.hide();
+			that.$postviewEl.css('display','none');
 			$html.append(that.$postviewEl);
 		}
 		that.$element.append($html);
@@ -408,7 +394,7 @@ if(!bg){
 		$button.on('click',function(){			
 			// start recording
 			that.record();
-		}).show();
+		}).css('display','');
 		$html.append($button);
 		
 		if(type != 'image' && (!opts.limit || !opts.disablePause)){
@@ -416,14 +402,14 @@ if(!bg){
 			$button.on('click',function(){			
 				// pause recording
 				that.togglePause();
-			}).hide();		
+			}).css('display','none');		
 			$html.append($button);
 			
 			$button = $('<div class="btn btn-danger btn-resume">'+ opts.text.resume +'</div>');
 			$button.on('click',function(){			
 				// pause recording
 				that.togglePause();
-			}).hide();		
+			}).css('display','none');		
 			$html.append($button);
 		}
 
@@ -432,7 +418,7 @@ if(!bg){
 			$button.on('click',function(){			
 				// stop recording
 				that.stop();
-			}).hide();		
+			}).css('display','none');
 			$html.append($button);
 		}
 
@@ -511,7 +497,7 @@ if(!bg){
 			
 			// add uploadstatus
 			if(opts.showTimer){
-				that.$uploadstatus = $('<div class="msr-upload-status"><div class="progress progress-striped active"><div class="bar progress-bar progress-striped active"></div></div><span class="txt-info"></span></div>').hide();
+				that.$uploadstatus = $('<div class="msr-upload-status"><div class="progress progress-striped active"><div class="bar progress-bar progress-striped active"></div></div><span class="txt-info"></span></div>').css('display','none');
 				that.$element.append(that.$uploadstatus);
 			}
 						
@@ -533,27 +519,27 @@ if(!bg){
 			delete that.recordedData;
 			
 			if(controlPanel.length){
-				controlPanel.find('.btn-pause, .btn-stop').show();
-				controlPanel.find('.btn-record, .btn-resume').hide();
+				controlPanel.find('.btn-pause, .btn-stop').css('display','');
+				controlPanel.find('.btn-record, .btn-resume').css('display','none');
 			}			
 			
 			// common callbacks functions
 			that.recordingEnded = function(url){
 				var	recordRTC = getRecordRtc.call(that),
-				attr = 'poster';
+				attr = type != 'gif' ? 'src' : 'poster';
 				previewElement.src = null;
 				previewElement.srcObject = null;
 				previewElement.muted = false;
 				previewElement.removeAttribute('muted');
 
 				previewElement.pause();
-				if(type != 'gif') {
-					attr = 'src';
+				previewElement[attr] = url;
+				if(type != 'gif'){
+					previewElement.setAttribute('controls', 'controls');
 					previewElement.controls = true;
 					previewElement.play();
 				}
 				
-				previewElement[attr] = url;
 				previewElement.onended = function() {
 					previewElement.pause();
 					previewElement[attr] = URL.createObjectURL(recordRTC.blob);
@@ -563,8 +549,7 @@ if(!bg){
 				
 				that.$element.triggerHandler('recording_ended.recorder');
 				
-				stopStream.call(that);
-				
+				stopStream.call(that);				
 				uploadData.call(that);
 			};
 
@@ -684,9 +669,7 @@ if(!bg){
                             disableLogs: opts.disableLogs,
                             recorderType: isEdge ? StereoAudioRecorder : null
                         });
-						
-						that.$previewEl.hide();
-						
+												
 						if(opts.limit){
 							that.recordRTCInstance
 								.setRecordingDuration(opts.limit * 1000)
@@ -722,7 +705,7 @@ if(!bg){
 						context.drawImage(previewElement, 0, 0, canvas.width, canvas.height);
 						
 						that.recordedData = canvas.toDataURL('image/jpeg');
-						that.$postviewEl.show()[0].src = that.recordedData;
+						that.$postviewEl.css('display','')[0].src = that.recordedData;
 
 						that.recordedData = that._dataURItoBlob(that.recordedData);
 
@@ -744,8 +727,8 @@ if(!bg){
 			resumeBtn,pauseBtn,isPaused = true,method = 'pause',btn = '.btn-resume';
 			
 			if(controlPanel.length){
-				controlPanel.find('.btn-stop').show();
-				controlPanel.find('.btn-record, .btn-resume, .btn-pause').hide();
+				controlPanel.find('.btn-stop').css('display','');
+				controlPanel.find('.btn-record, .btn-resume, .btn-pause').css('display','none');
 			}
 			
 			var instances = that.recordRTCInstance;
@@ -769,7 +752,7 @@ if(!bg){
 			
 			that.$element.triggerHandler('recording_'+ method +'d.recorder');
 			
-			controlPanel.find(btn).show();
+			controlPanel.find(btn).css('display','');
 			that.isPaused = isPaused;
 			toggleTimer.call(that);
 		},
@@ -780,8 +763,8 @@ if(!bg){
 			recordRTCInstance = that.recordRTCInstance;
 			
 			if(controlPanel.length){
-				controlPanel.find('.btn-record').show();
-				controlPanel.find('.btn-resume, .btn-pause, .btn-stop').hide();
+				controlPanel.find('.btn-record').css('display','');
+				controlPanel.find('.btn-resume, .btn-pause, .btn-stop').css('display','none');
 			}
 			
 			// stop timer
