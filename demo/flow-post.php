@@ -10,10 +10,11 @@ exit('error');
 
 //Path to autoload.php from current location
 require_once './vendor/autoload.php';
+$ds = DIRECTORY_SEPARATOR;
 
-$uploadDir = './uploaded_files/';
+$uploadDir = '.'. $ds .'uploaded_files';
 $config = new \Flow\Config();
-$config->setTempDir('./uploaded_files/chunks_temp_folder');
+$config->setTempDir('.'. $ds .'uploaded_files'. $ds .'chunks_temp_folder');
 $request = new \Flow\Request();
 
 $rawFileName = $request->getFileName();

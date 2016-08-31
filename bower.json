@@ -1,13 +1,12 @@
 {
   "name": "jquery-recorder",
-  "version": "v0.0.1",
+  "version": "v0.0.2",
   "authors": [
     "G. Tomaselli <girotomaselli@gmail.com>"
   ],
   "contributors": [],
   "main": [
-    "dist/jquery.recorder.js",
-    "dist/jquery.recorder.min.js"
+    "dist/jquery.recorder.js"
   ],
   "description": "jQuery plugin to build a audio/video/gif recorder using webRTC and RecordRTC",
   "keywords": [

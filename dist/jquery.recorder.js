@@ -1,5 +1,5 @@
 /*!
- * jQuery Recorder v0.0.1
+ * jQuery Recorder v0.0.2
  *
  * Copyright August 2016, G. Tomaselli
  * Licensed under the MIT license.
@@ -31,6 +31,20 @@ if(!bg){
 			}
 
 		}	
+		
+		bg.prototype.hide = function(){
+			for(var i=0;i<this.length;i++){
+				this[i].style.display = 'none';
+			}
+			return this;
+		}
+		
+		bg.prototype.show = function(){
+			for(var i=0;i<this.length;i++){
+				this[i].style.display = '';
+			}
+			return this;
+		}
 		
 		bg.prototype.find = function (selector){			
 			var context = this[0];
@@ -88,52 +102,6 @@ if(!bg){
 		navigator.getUserMedia(mediaConstraints, successCallback, errorCallback);
 	},
 	
-	dataURItoBlob = function(dataURI) {
-		// convert base64/URLEncoded data component to raw binary data held in a string
-		var byteString;
-		if (dataURI.split(',')[0].indexOf('base64') >= 0)
-			byteString = atob(dataURI.split(',')[1]);
-		else
-			byteString = unescape(dataURI.split(',')[1]);
-
-		// separate out the mime component
-		var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
-
-		// write the bytes of the string to a typed array
-		var ia = new Uint8Array(byteString.length);
-		for (var i = 0; i < byteString.length; i++) {
-			ia[i] = byteString.charCodeAt(i);
-		}
-
-		return new Blob([ia], {type:mimeString});
-	},
-	
-	humanize = function(bytes) {
-		if (bytes == 0) return '0 Byte';
-		var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'],
-		i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-		return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
-	},
-	
-	timeToString = function(time){ // milliseconds
-		var hours,minutes,seconds;
-		
-		time = time/1000;
-		
-		// does the same job as parseInt truncates the float
-		minutes = (time / 60) | 0;
-		hours = (minutes / 60) | 0;
-		seconds = (time % 60) | 0;
-
-		if(hours) minutes -= hours * 60;
-		
-		hours = hours < 10 ? "0" + hours : hours;
-		minutes = minutes < 10 ? "0" + minutes : minutes;
-		seconds = seconds < 10 ? "0" + seconds : seconds;
-
-		return (hours == '00' ? '' : hours +':') + minutes + ":" + seconds;
-	},
-	
 	toggleTimer = function(stop){
 		var that = this,
 			opts = that.settings,
@@ -167,7 +135,7 @@ if(!bg){
 			// _counter() was called
 			diff = (duration * 1000) - ((Date.now() - start) | 0);
 			
-			that.$timer.html('<span class="txt-info">'+ opts.text.remaining_recording +'</span><span class="time-info">'+ timeToString(diff) +'</span>'); 
+			that.$timer.html('<span class="txt-info">'+ opts.text.remaining_recording +'</span><span class="time-info">'+ that._timeToString(diff) +'</span>'); 
 
 			if(!diff){
 				toggleTimer.call(that,true);
@@ -198,7 +166,7 @@ if(!bg){
 		opts = that.settings,
 		data = that.getRecordedData(),
 		uploadStatusContainer = that.$uploadstatus,
-		flowjs,onFileProgress,onFileSuccess;
+		flowjs,onFileProgress,onFileSuccess,onFileError;
 		
 		if(!data || ((!opts.flowOpts || typeof Flow == 'undefined') && typeof opts.uploader != 'function')) return;
 		
@@ -220,18 +188,21 @@ if(!bg){
 		
 		uploadStatusContainer.find('.progress, .progress-bar')
 			.addClass('active')
-			.removeClass('progress-bar-success bar-success');		
+			.css('cursor','')
+			.removeClass('progress-bar-success bar-success progress-bar-danger bar-danger');		
 		uploadStatusContainer.show();
 		
 		that.$element.triggerHandler('upload_start.recorder');
 		
-		onFileProgress = function(file){
-			
+		that.isUploading = true;
+		that.uploadCompleted = false;
+		
+		onFileProgress = function(file){			
 			that.$element.triggerHandler('upload_progress.recorder', file);
 			
             // Handle progress for both the file and the overall upload
-			var uploadInfo = opts.text.upload_speed + humanize(file.averageSpeed) + '/s '
-                + timeToString(file.timeRemaining()*1000) + opts.text.time_remaining;
+			var uploadInfo = opts.text.upload_speed + that._humanize(file.averageSpeed) + '/s '
+                + that._timeToString(file.timeRemaining()*1000) + opts.text.time_remaining;
 				
             uploadStatusContainer.find('.txt-info').show().html(uploadInfo);
 				
@@ -243,6 +214,9 @@ if(!bg){
 		flowjs.on('fileProgress', onFileProgress);
 		
 		onFileSuccess = function(file, message, chunk){
+			that.isUploading = false;
+			that.uploadCompleted = true;
+			
 			that.$element.triggerHandler('upload_completed.recorder', [file, message, chunk]);
 			
 			uploadStatusContainer.find('.progress, .progress-bar')
@@ -257,6 +231,30 @@ if(!bg){
 			onFileSuccess = opts.onFileSuccess;
 		}
 		flowjs.on('fileSuccess', onFileSuccess);
+		
+		
+		onFileError = function(file, message, chunk){
+			that.isUploading = false;			
+			that.$element.triggerHandler('upload_error.recorder', [file, message, chunk]);
+			
+			uploadStatusContainer.find('.progress, .progress-bar')
+				.removeClass('active progress-striped')
+				.addClass('progress-bar-danger bar-danger');
+			
+			uploadStatusContainer
+				.find('.progress-bar')
+				.html(opts.text.upload_error)
+				.css('cursor','pointer')
+				.on('click',function(){
+					uploadData.call(that);
+				});
+			
+			uploadStatusContainer.find('.txt-info').hide();
+        };
+		if(typeof opts.onFileError == 'function'){
+			onFileError = opts.onFileError;
+		}
+		flowjs.on('fileError', onFileError);
 	},
 	
 	stopStream = function(){
@@ -482,6 +480,7 @@ if(!bg){
 					take_snapshot: 'Take snapshot',
 					time_remaining: ' time remaining',
 					upload_speed: 'upload speed: ',
+					upload_error: 'Upload error, click here to retry',
 					completed: 'upload completed',
 					remaining_recording: 'Remaining recording time ',
 					record: 'Record',
@@ -725,7 +724,7 @@ if(!bg){
 						that.recordedData = canvas.toDataURL('image/jpeg');
 						that.$postviewEl.show()[0].src = that.recordedData;
 
-						that.recordedData = dataURItoBlob(that.recordedData);
+						that.recordedData = that._dataURItoBlob(that.recordedData);
 
 						that.$element.triggerHandler('recording_ended.recorder');
 						
@@ -810,6 +809,59 @@ if(!bg){
 			recordRTCInstance.stopRecording(function(url){
 				that.recordingEnded(url);
 			});			
+		},
+		
+		// utilities
+		_blobToDataURL: function(blob, callback) {
+			var a = new FileReader();
+			a.onload = function(e) {callback(e.target.result);}
+			a.readAsDataURL(blob);
+		},
+		
+		_dataURItoBlob: function(dataURI) {
+			// convert base64/URLEncoded data component to raw binary data held in a string
+			var byteString;
+			if (dataURI.split(',')[0].indexOf('base64') >= 0)
+				byteString = atob(dataURI.split(',')[1]);
+			else
+				byteString = unescape(dataURI.split(',')[1]);
+
+			// separate out the mime component
+			var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+
+			// write the bytes of the string to a typed array
+			var ia = new Uint8Array(byteString.length);
+			for (var i = 0; i < byteString.length; i++) {
+				ia[i] = byteString.charCodeAt(i);
+			}
+
+			return new Blob([ia], {type:mimeString});
+		},
+		
+		_humanize: function(bytes) {
+			if (bytes == 0) return '0 Byte';
+			var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'],
+			i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+			return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+		},
+		
+		_timeToString: function(time){ // milliseconds
+			var hours,minutes,seconds;
+			
+			time = time/1000;
+			
+			// does the same job as parseInt truncates the float
+			minutes = (time / 60) | 0;
+			hours = (minutes / 60) | 0;
+			seconds = (time % 60) | 0;
+
+			if(hours) minutes -= hours * 60;
+			
+			hours = hours < 10 ? "0" + hours : hours;
+			minutes = minutes < 10 ? "0" + minutes : minutes;
+			seconds = seconds < 10 ? "0" + seconds : seconds;
+
+			return (hours == '00' ? '' : hours +':') + minutes + ":" + seconds;
 		}
     },
 	
