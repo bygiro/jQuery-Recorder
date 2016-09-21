@@ -1,5 +1,5 @@
 /*!
- * jQuery Recorder v0.0.2
+ * jQuery Recorder v0.0.4
  *
  * Copyright August 2016, G. Tomaselli
  * Licensed under the MIT license.
@@ -15,52 +15,21 @@ if(!bg){
 	} else if(typeof angular != 'undefined'){
 		bg = angular.element;
 		bg.extend = angular.extend;	
-	
-		function selectResult(elem, selector){
-			if (elem.length == 1)
-				return elem[0].querySelectorAll(selector);
-			else {
-				var matches = [];
-				for(var i=0;i<elem.length;i++){
-					var elm = elem[i];
-					var nodes = angular.element(elm.querySelectorAll(selector));
-					matches.push.apply(matches, nodes.slice());					
-				}
-				return matches;
 
-			}
-
-		}	
-				
-		bg.prototype.find = function (selector){			
-			var context = this[0];
+		bg.prototype.find = function (selector){
+			var context = this[0],matches = [];
 			// Early return if context is not an element or document
-			if (!context || (context.nodeType !== 1 && context.nodeType !== 9) || !angular.isString(selector)) {
+			if (!context || (context.nodeType !== 1 && context.nodeType !== 9) || typeof selector != 'string') {
 				return [];
 			}
-			var matches = [];
-			if (selector.charAt(0) === '>')
-				selector = ':scope ' + selector;
-			if (selector.indexOf(':visible') > -1) {
-				var elems = angular.element(selectResult(this, selector.split(':visible')[0]))
-
-				forEach(elems, function (val, i) {
-					if (angular.element(val).is(':visible'))
-						matches.push(val);
-				})
-
-			} else {
-				matches = selectResult(this, selector)
+			
+			for(var i=0;i<this.length;i++){
+				var elm = this[i],
+				nodes = bg(elm.querySelectorAll(selector));
+				matches.push.apply(matches, nodes.slice());
 			}
-
-			if (matches.length) {
-				if (matches.length == 1)
-					return angular.element(matches[0])
-				else {
-					return angular.element(matches);
-				}
-			}
-			return angular.element();
+			
+			return bg(matches);
 		};
 	}
 }
@@ -86,6 +55,17 @@ if(!bg){
 			return;
 		}
 		navigator.getUserMedia(mediaConstraints, successCallback, errorCallback);
+	},
+	isCamWorkingChecker = {},
+	isCamWorking = function(videoElement){
+		var result, i = isCamWorkingChecker;
+		i.canv = i.canv || document.createElement("canvas");
+		i.ctx = i.ctx || i.canv.getContext("2d");
+		i.canv.width = i.canv.height = 1;
+		
+		i.ctx.drawImage(videoElement,0,0,1,1);
+		result = i.ctx.getImageData(0,0,1,1);
+		return result.data[0]+result.data[1]+result.data[2]+result.data[3];
 	},
 	
 	toggleTimer = function(stop){
@@ -137,33 +117,244 @@ if(!bg){
 	getRecordRtc = function(){
 		var that = this,
 		opts = that.settings,index = false,
-		recordRTCInstance = that.recordRTCInstance;
+		RTCinst = that.RTCinst;
 		
-		if(recordRTCInstance.length){
-			index = !recordRTCInstance[1] ? 0 : 1;			
-			return recordRTCInstance[index];
+		if(!RTCinst) return;
+		
+		if(RTCinst.length){
+			index = !RTCinst[1] ? 0 : 1;			
+			return RTCinst[index];
 		}
 			
-		return recordRTCInstance;
+		return RTCinst;
+	},
+	
+	// common callback function
+	onMediaCaptured = function(){
+		var that = this, opts = that.settings,
+		type = opts.streamType,
+		gifDelay = 800,
+		recLimit = (parseInt(opts.limit) || 0) * 1000,
+		rtcOptions,audioRecorder,videoRecorder;
+		
+		if(type == 'image') return;
+
+		function postStart(){
+			that.$element.triggerHandler('recording_started.recorder');
+			
+			// timer
+			if(opts.showTimer){
+				toggleTimer.call(that);
+			}
+		}
+		
+		if(type == 'video' && opts.audio && typeof MediaRecorder === 'undefined'){
+
+			rtcOptions = {
+				type: 'audio',
+				bufferSize: parseInt(opts.bufferSize),
+				sampleRate: parseInt(opts.sampleRate),
+				leftChannel: opts.leftChannel,
+				disableLogs: opts.disableLogs,
+				recorderType: isEdge ? StereoAudioRecorder : null
+			};
+
+			if(typeof opts.sampleRate == 'undefined') {
+				delete opts.sampleRate;
+			}
+
+			audioRecorder = RecordRTC(that.stream, rtcOptions);
+
+			videoRecorder = RecordRTC(that.stream, {
+				type: 'video',
+				disableLogs: opts.disableLogs,
+				canvas: {
+					width: opts.canvas_width,
+					height: opts.canvas_height
+				},
+				// bitsPerSecond: 25 * 8 * 1025 // 25 kbits/s
+				getNativeBlob: true, // enable it for longer recordings
+				frameInterval: typeof opts.frameInterval !== 'undefined' ? parseInt(opts.frameInterval) : 20 // minimum time between pushing frames to Whammy (in milliseconds)
+			});
+
+			if(recLimit){
+				// set duration
+				videoRecorder
+					.setRecordingDuration(recLimit)
+					.onRecordingStopped(function(url){
+						that.stop(url);
+					});
+					
+				audioRecorder
+					.setRecordingDuration(recLimit)
+					.onRecordingStopped(function(url){
+						that.stop(url);
+					});								
+			}
+			
+			// to sync audio/video playbacks in browser!
+			videoRecorder.initRecorder(function() {
+				audioRecorder.initRecorder(function() {
+					audioRecorder.startRecording();
+					videoRecorder.startRecording();
+					
+					postStart();
+				});
+			});
+					
+			that.RTCinst = [audioRecorder, videoRecorder];
+		} else {
+			var rtcOptions = {
+				type: type,
+				mimeType: 'video/'+ opts.videoFormat,
+				disableLogs: opts.disableLogs,
+				canvas: {
+					width: opts.canvas_width,
+					height: opts.canvas_height
+				},
+				// bitsPerSecond: 25 * 8 * 1025 // 25 kbits/s
+				getNativeBlob: true, // enable it for longer recordings
+				frameInterval: typeof opts.frameInterval !== 'undefined' ? parseInt(opts.frameInterval) : 20 // minimum time between pushing frames to Whammy (in milliseconds)
+			};
+			
+			if(type == 'audio'){
+				$.extend(rtcOptions,{
+					mimeType: 'audio/'+ opts.audioFormat,
+					bufferSize: parseInt(opts.bufferSize),
+					sampleRate: parseInt(opts.sampleRate),
+					leftChannel: opts.leftChannel,
+					recorderType: isEdge ? StereoAudioRecorder : null
+				});
+			}
+
+			if(type == 'gif'){
+				rtcOptions.frameRate = opts.frameRate;
+				rtcOptions.quality = opts.quality;
+			}
+			that.RTCinst = RecordRTC(that.stream,rtcOptions);
+
+			if(recLimit){					
+				that.RTCinst
+					.setRecordingDuration(recLimit)
+					.onRecordingStopped(function(url){
+						that.stop(url);
+					});
+			}
+			
+			that.RTCinst.startRecording();
+
+			if(type == 'gif'){
+				// workaround for black frames at the beginning
+				that.RTCinst.pauseRecording();
+				
+				// check for webcam fully working
+				var timeDiff,now,checkingStarted = new Date(),
+				isCamWorkingInstance = setInterval(function(){
+					now = new Date();
+					timeDiff = parseInt((now - checkingStarted)/1000);
+					if(isCamWorking(that.$previewEl[0])){
+						// finally we have a full stream of the webcam
+						// setTimeout here is togive a bit more of time so the webcam is stable
+						setTimeout(function(){							
+							that.RTCinst.resumeRecording();
+							postStart();
+						},250);
+						clearInterval(isCamWorkingInstance);
+					} if(timeDiff > 5){ // 5 seconds, something is wrong
+						alert(opts.text.webcam_crashed_alert);
+					}
+				},20);
+			} else {
+				postStart();
+			}
+		}	
+	},
+	
+	// common callback function
+	recordingEnded = function(url){
+		var that = this,
+		type = that.settings.streamType,
+		previewElement = that.$previewEl[0],
+		recordRTC = getRecordRtc.call(that) || {},
+		recordedBlob = recordRTC.blob,
+		urlPrev = url || '',
+		canvas, context,
+		prevContainer = that.$element.find('.msr-preview'),
+		method = 'removeClass';
+		
+		if(type == 'image'){
+			if(that.stream){
+				// we are recording
+				canvas = document.createElement('canvas');
+				canvas.width = previewElement.videoWidth || previewElement.clientWidth;
+				canvas.height = previewElement.videoHeight || previewElement.clientHeight;
+			   
+				context = canvas.getContext('2d');
+				context.drawImage(previewElement, 0, 0, canvas.width, canvas.height);
+				
+				urlPrev = canvas.toDataURL('image/jpeg');					
+				that.recordedData = that._dataURItoBlob(urlPrev);
+				that.$element.triggerHandler('recording_ended.recorder');						
+			}
+
+			that.$postviewEl.css('display','')[0].src = urlPrev;
+		} else {
+			previewElement.pause();
+
+			previewElement.src = '';
+			previewElement.srcObject = null;
+			previewElement.muted = false;
+			previewElement.removeAttribute('muted');
+
+			if(type == 'gif'){
+				var postEle = that.$postviewEl.css('display','')[0];
+				postEle.src = '';
+				postEle.src = urlPrev;
+			} else {
+				previewElement.src = recordedBlob ? URL.createObjectURL(recordedBlob) : urlPrev;
+				previewElement.setAttribute('controls', 'controls');
+				previewElement.controls = true;
+				if(recordedBlob) previewElement.play();				
+			}
+			
+			previewElement.onended = function() {
+				previewElement.pause();
+			};
+
+			if(recordedBlob){
+				that.recordedData = recordedBlob;
+				that.$element.triggerHandler('recording_ended.recorder');
+			} else {
+				delete that.recordedData;
+			}
+			
+		}
+		
+		// check for empty data
+		if(!urlPrev || urlPrev == '') method = 'addClass';
+		prevContainer[method]('empty-data');			
+		
+		stopStream.call(that);		
+		uploadData.call(that);
 	},
 	
 	uploadData = function(){
 		var that = this,
 		opts = that.settings,
-		data = that.getRecordedData(),
+		data = that.recordedData,
 		uploadStatusContainer = that.$uploadstatus,
 		flowjs,onFileProgress,onFileSuccess,onFileError;
 		
-		if(!data || ((!opts.flowOpts || typeof Flow == 'undefined') && typeof opts.uploader != 'function')) return;
+		if(!data) return;
 		
-		if(opts.uploader){
+		if(typeof opts.uploader == 'function'){
 			// custom uploader
 			opts.uploader(data);
 			return;
 		}
 		
 		// upload with flow.js
-		if(typeof Flow == 'undefined') return;
+		if(!opts.flowOpts || typeof Flow == 'undefined') return;
 		
 		
 		flowjs = new Flow(opts.flowOpts);
@@ -255,15 +446,16 @@ if(!bg){
 				
 				tracks[i].stop();
 			}
-			that.stream = null;
-		}
-		
-		that.$element.triggerHandler('stream_stop.recorder');
+			delete that.stream;
+			that.$element.triggerHandler('stream_stop.recorder');
+		}		
 
 		if(that.visualizer){
 			clearInterval(that.visualizer);
 			that.$visualizer.css('display','none');
 		}
+		
+		that.$element.find('.msr-preview').removeClass('recording');
 		
 		if(that.$postviewEl.length){			
 			that.$previewEl.css('display','none');
@@ -280,14 +472,17 @@ if(!bg){
 		
 		that.$previewEl.css('display','');
 		if(that.$postviewEl.length) that.$postviewEl.css('display','none');
-				
+
 		captureUserMedia(options, function(stream) {
 			that.stream = stream;
 			
 			that.$element.triggerHandler('stream_start.recorder');
+			that.$element.find('.msr-preview').addClass('recording');
 			
 			previewElement.srcObject = stream;
 			previewElement.muted = true;
+			previewElement.controls = false;
+			previewElement.removeAttribute('controls');				
 			previewElement.play();
 			
 			if(type == 'audio' && that.$visualizer.length){
@@ -334,29 +529,32 @@ if(!bg){
 				mic.connect(analyser);
 			}
 			
-			that.onMediaCaptured();
+			onMediaCaptured.call(that);
 			
 			if(typeof opts.onMediaStopped == 'function'){
 				stream.onended = opts.onMediaStopped;
 			}
 			
 		}, function(error){
+			console.log(error);
 			if(typeof opts.onMediaCapturingFailed == 'function'){
 				opts.onMediaCapturingFailed(error);
+			} else {
+				// stop
+				stopStream.call(that);
 			}
 		});
 	},
 	
 	addPreviewElement = function(){
 		var that = this,opts = that.settings,
-		$html = $('<div class="msr-preview"></div>'),
+		$html = $('<div class="msr-preview empty-data"></div>'),
 		type = opts.streamType;
 		
 		that.$postviewEl = [];
 		
 		switch(type){
 			case 'video':
-			case 'gif':
 				that.$previewEl = $('<video></video>');
 				break;
 				
@@ -366,6 +564,7 @@ if(!bg){
 				that.$previewEl = $('<audio></audio>');
 				break;
 				
+			case 'gif':
 			case 'image':
 				that.$previewEl = $('<video></video>');
 				that.$postviewEl = $('<img />');
@@ -441,7 +640,8 @@ if(!bg){
 				bufferSize: 16384,
 				
 				frameInterval: 20,
-				
+				frameRate: 100,
+				quality: 10,
 				leftChannel: false,
 				
 				sampleRate: 44100,
@@ -462,6 +662,7 @@ if(!bg){
 				
 				// internationalization
 				text: {
+					webcam_crashed_alert: 'webcam not working, please close and open again the browser',
 					enable_webcam: 'Enable webcam',
 					take_snapshot: 'Take snapshot',
 					time_remaining: ' time remaining',
@@ -500,7 +701,7 @@ if(!bg){
 				that.$uploadstatus = $('<div class="msr-upload-status"><div class="progress progress-striped active"><div class="bar progress-bar progress-striped active"></div></div><span class="txt-info"></span></div>').css('display','none');
 				that.$element.append(that.$uploadstatus);
 			}
-						
+
 			// add control panel
 			addControlPanel.call(that);
         },
@@ -509,216 +710,28 @@ if(!bg){
 			return this.recordedData;
 		},
 		
+		setPreview: function(dataUrl){
+			recordingEnded.call(this,dataUrl);
+		},
+
 		record: function(){
 			var that = this, opts = that.settings,
 			controlPanel = that.$element.find('.msr-panel'),
-			type = opts.streamType,
-			previewElement = that.$previewEl[0],
-			streamOptions;
+			type = opts.streamType;
 			
 			delete that.recordedData;
+			// remove also data from preview
+			recordingEnded.call(that);
 			
 			if(controlPanel.length){
 				controlPanel.find('.btn-pause, .btn-stop').css('display','');
 				controlPanel.find('.btn-record, .btn-resume').css('display','none');
 			}			
-			
-			// common callbacks functions
-			that.recordingEnded = function(url){
-				var	recordRTC = getRecordRtc.call(that),
-				attr = type != 'gif' ? 'src' : 'poster';
-				previewElement.src = null;
-				previewElement.srcObject = null;
-				previewElement.muted = false;
-				previewElement.removeAttribute('muted');
 
-				previewElement.pause();
-				previewElement[attr] = url;
-				if(type != 'gif'){
-					previewElement.setAttribute('controls', 'controls');
-					previewElement.controls = true;
-					previewElement.play();
-				}
-				
-				previewElement.onended = function() {
-					previewElement.pause();
-					previewElement[attr] = URL.createObjectURL(recordRTC.blob);
-				};
-
-				that.recordedData = recordRTC.blob;
-				
-				that.$element.triggerHandler('recording_ended.recorder');
-				
-				stopStream.call(that);				
-				uploadData.call(that);
-			};
-
-			switch(type){
-				case 'video':
-				case 'gif':					
-                    that.onMediaCaptured = function() {
-						if(type == 'video' && opts.audio && typeof MediaRecorder === 'undefined'){
-
-                            var options = {
-                                type: 'audio',
-                                bufferSize: parseInt(opts.bufferSize),
-                                sampleRate: parseInt(opts.sampleRate),
-                                leftChannel: opts.leftChannel,
-                                disableLogs: opts.disableLogs,
-                                recorderType: isEdge ? StereoAudioRecorder : null
-                            };
-
-                            if(typeof opts.sampleRate == 'undefined') {
-                                delete opts.sampleRate;
-                            }
-
-                            var audioRecorder = RecordRTC(that.stream, options);
-
-                            var videoRecorder = RecordRTC(that.stream, {
-                                type: 'video',
-                                disableLogs: opts.disableLogs,
-                                canvas: {
-                                    width: opts.canvas_width,
-                                    height: opts.canvas_height
-                                },
-								// bitsPerSecond: 25 * 8 * 1025 // 25 kbits/s
-								getNativeBlob: true, // enable it for longer recordings
-                                frameInterval: typeof opts.frameInterval !== 'undefined' ? parseInt(opts.frameInterval) : 20 // minimum time between pushing frames to Whammy (in milliseconds)
-                            });
-
-							if(opts.limit){
-								// set duration
-								videoRecorder
-									.setRecordingDuration(opts.limit * 1000)
-									.onRecordingStopped(function(url){
-										that.stop(url);
-									});
-									
-								audioRecorder
-									.setRecordingDuration(opts.limit * 1000)
-									.onRecordingStopped(function(url){
-										that.stop(url);
-									});								
-							}
-							
-                            // to sync audio/video playbacks in browser!
-                            videoRecorder.initRecorder(function() {
-                                audioRecorder.initRecorder(function() {
-                                    audioRecorder.startRecording();
-                                    videoRecorder.startRecording();
-									
-									that.$element.triggerHandler('recording_started.recorder');
-									// timer
-									if(opts.showTimer){
-										toggleTimer.call(that);
-									}
-                                });
-                            });
-									
-							that.recordRTCInstance = [audioRecorder, videoRecorder];
-						} else {							
-							that.recordRTCInstance = RecordRTC(that.stream,{
-								type: type,
-								mimeType: 'video/'+ opts.videoFormat,
-								disableLogs: opts.disableLogs,
-								canvas: {
-									width: opts.canvas_width,
-									height: opts.canvas_height
-								},
-								// bitsPerSecond: 25 * 8 * 1025 // 25 kbits/s
-								getNativeBlob: true, // enable it for longer recordings
-								frameInterval: typeof opts.frameInterval !== 'undefined' ? parseInt(opts.frameInterval) : 20 // minimum time between pushing frames to Whammy (in milliseconds)
-							});
-
-							
-							if(opts.limit){
-								that.recordRTCInstance
-									.setRecordingDuration(opts.limit * 1000)
-									.onRecordingStopped(function(url){
-										that.stop(url);
-									});
-							}
-							
-							that.recordRTCInstance.startRecording();
-							
-							that.$element.triggerHandler('recording_started.recorder');
-							
-							// timer
-							if(opts.showTimer){
-								toggleTimer.call(that);
-							}
-						}
-                    };				
-					
-					streamOptions = {video: true};
-					if(opts.audio){
-						streamOptions.audio = true;
-					}
-					startStream.call(that, streamOptions);
-					
-					break;
-					
-				case 'audio':
-                    that.onMediaCaptured = function(){
-                        that.recordRTCInstance = RecordRTC(that.stream, {
-                            type: type,
-							mimeType: 'audio/'+ opts.audioFormat,
-                            bufferSize: parseInt(opts.bufferSize),
-                            sampleRate: parseInt(opts.sampleRate),
-                            leftChannel: opts.leftChannel,
-                            disableLogs: opts.disableLogs,
-                            recorderType: isEdge ? StereoAudioRecorder : null
-                        });
-												
-						if(opts.limit){
-							that.recordRTCInstance
-								.setRecordingDuration(opts.limit * 1000)
-								.onRecordingStopped(function(url){
-									that.stop(url);
-								});
-						}
-						
-                        that.recordRTCInstance.startRecording();
-						
-						that.$element.triggerHandler('recording_started.recorder');
-						// timer
-						if(opts.showTimer){
-							toggleTimer.call(that);
-						}
-                    };
-
-					streamOptions = {audio: true};
-					startStream.call(that, streamOptions);
-					break;
-					
-				case 'image':
-					that.onMediaCaptured = function(){
-						
-					}
-					
-					that.recordingEnded = function(url) {
-						var canvas = document.createElement('canvas');
-						canvas.width = previewElement.videoWidth || previewElement.clientWidth;
-						canvas.height = previewElement.videoHeight || previewElement.clientHeight;
-					   
-						var context = canvas.getContext('2d');
-						context.drawImage(previewElement, 0, 0, canvas.width, canvas.height);
-						
-						that.recordedData = canvas.toDataURL('image/jpeg');
-						that.$postviewEl.css('display','')[0].src = that.recordedData;
-
-						that.recordedData = that._dataURItoBlob(that.recordedData);
-
-						that.$element.triggerHandler('recording_ended.recorder');
-						
-						stopStream.call(that);
-						uploadData.call(that);
-					};
-
-					streamOptions = {video: true};
-					startStream.call(that, streamOptions);
-					break;
-			}
+			startStream.call(that, {
+				video: (type == 'audio') ? false : true,
+				audio: (type == 'audio') ? true : ((type == 'image' || type == 'gif') ? false : opts.audio)
+			});
 		},
 		
 		togglePause: function(){
@@ -731,9 +744,9 @@ if(!bg){
 				controlPanel.find('.btn-record, .btn-resume, .btn-pause').css('display','none');
 			}
 			
-			var instances = that.recordRTCInstance;
-			if(!that.recordRTCInstance.length){
-				instances = [that.recordRTCInstance];
+			var instances = that.RTCinst;
+			if(!that.RTCinst.length){
+				instances = [that.RTCinst];
 			}
 			
 			if(that.isPaused){
@@ -760,7 +773,7 @@ if(!bg){
 		stop: function(recordedURL){
 			var that = this, opts = that.settings,
 			controlPanel = that.$element.find('.msr-panel'),
-			recordRTCInstance = that.recordRTCInstance;
+			RTCinst = that.RTCinst;
 			
 			if(controlPanel.length){
 				controlPanel.find('.btn-record').css('display','');
@@ -769,29 +782,23 @@ if(!bg){
 			
 			// stop timer
 			toggleTimer.call(that,true);
-			
-			if(opts.streamType == 'image'){
-				that.recordingEnded(recordedURL);
-				return;
-			}
-			
-			if(!recordRTCInstance) return;
-			
+
 			if(that.isPaused){
 				that.togglePause();
 				that.stop();
 				return;
 			}
 			
-			if(recordedURL){
-				that.recordingEnded(recordedURL);
+			if(recordedURL || opts.streamType == 'image'){
+				recordingEnded.call(that,recordedURL);
 				return;
 			}
 			
-			recordRTCInstance = getRecordRtc.call(that);
-			recordRTCInstance.stopRecording(function(url){
-				that.recordingEnded(url);
-			});			
+			if(!RTCinst) return;
+			RTCinst = getRecordRtc.call(that);
+			RTCinst.stopRecording(function(url){
+				recordingEnded.call(that,url);
+			});
 		},
 		
 		// utilities
